@@ -1,0 +1,15 @@
+#!/bin/sh
+
+cat <<EOI | ed $1/findlib.conf
+1
+/destdir
+d
+a
+destdir="$1"
+.
+1
+/path
+s!"!"$1:!
+w
+q
+EOI

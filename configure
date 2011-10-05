@@ -1,0 +1,132 @@
+#!/bin/sh
+
+CONFIGFILE=config.mk
+
+echo '## configure run on' `date` > $CONFIGFILE
+
+## Process options
+
+while [ "$#" -gt 0 ]
+do
+	case $1 in
+	        -h | --help)
+			echo "Usage: [VAR=VALUE]... ./configure [OPTION]... "
+			echo
+			echo "Configuration:"
+			echo "-h, --help              display this help and exit"
+			echo "--with-doc              build documentation [default: off]"
+			echo "--doc-dir               where to install documentation [default: ../doc/pycaml]"
+			echo "--with-extra-debug      make the library print extra debug information (in particular"
+			echo "                        on global roots)"
+			echo
+			echo "Influential environment variables:"
+			echo " PYTHON      path to python interpreter. This is used to derive python-"
+			echo "             related configuration details (include dir, libdir, etc.)"
+			echo " EXTRALIB    additional linker flags"
+			echo " EXTRACFLAGS additional C flags (defaults to -g)"
+			exit
+			;;
+		--with-doc)
+			echo 'WITH_DOC=YES' >> $CONFIGFILE
+			;;
+		--doc-dir)
+			shift
+			echo "DOCDIR=$1" >> $CONFIGFILE
+			;;
+		--with-extra-debug)
+			echo 'EXTRACFLAGS += -DWITH_EXTRA_DEBUG' >> $CONFIGFILE
+			;;
+		*)
+			echo "warning: unknown option $1"
+    esac
+    shift
+done
+
+
+## search for python
+
+PYTHON=${PYTHON-python}
+echo "Path to python interpreter: $(command -v $PYTHON)"
+
+PYVER=`cat<<EOF | $PYTHON -
+from distutils.sysconfig import get_config_var
+print get_config_var('VERSION')
+EOF
+`
+
+# check whether we have a supported python version
+SUPPORTED_PYVERS="2.6 2.7"
+FOUND=0
+for ver in $SUPPORTED_PYVERS; do
+    if test x"$ver" = x"$PYVER"; then
+        echo "python version: $ver"
+	FOUND=1
+	break
+    fi
+done
+if [ $FOUND -ne 1 ]; then
+    echo "Error: python version $PYVER not supported"
+    exit 1
+fi
+
+
+# determine include directory (containing 'Python.h')
+PYTHONINC=`cat<<EOF | $PYTHON -
+from distutils.sysconfig import get_python_inc
+print get_python_inc()
+EOF
+`
+
+if [ -n "$PYTHONINC" ] ; then
+    echo PYTHONINC ?= -I$PYTHONINC >> $CONFIGFILE;
+    echo "python include path (directory containing 'Python.h'): $PYTHONINC"
+else
+    echo "Error: Could not find path to Python.h" >&2
+    exit 1
+fi
+
+# determine directory containing libpython*.so (or alternatively
+# libpython*.a) as well as the name of the corresponding library.
+PYTHONLIBDIR=`cat<<EOF | $PYTHON -
+from distutils.sysconfig import get_config_var
+print get_config_var('LIBDIR')
+EOF
+`
+
+PYTHONLIBNAME=`cat<<EOF | $PYTHON -
+import re
+from distutils.sysconfig import get_config_var
+m=re.match(r"^lib(.*)\.so$", get_config_var('LDLIBRARY'))
+if m: print m.group(1)
+EOF
+`
+
+if [ -z "$PYTHONLIBNAME" ] ; then
+    PYTHONLIBNAME=`cat<<EOF | $PYTHON -
+import re
+from distutils.sysconfig import get_config_var
+m=re.match(r"^lib(.*)\.a$", get_config_var('LIBRARY'))
+if m: print m.group(1)
+EOF
+`
+fi
+
+
+# write python-related flags to config file
+if [ -n "$PYTHONLIBDIR" ] && [ -n "$PYTHONLIBNAME" ] ; then
+    echo PYTHONLIB ?= -l$PYTHONLIBNAME -L$PYTHONLIBDIR >> $CONFIGFILE
+    echo "python library path: $PYTHONLIBDIR"
+else
+    echo "Error: Could not find path to libpython*.so or libpython*.a" >&2
+    exit 1
+fi
+
+
+## complete flags
+
+cat <<EOF >> $CONFIGFILE
+
+INCLUDEPATH ?= \${PYTHONINC}
+LINKFLAGS   ?= \${EXTRALIB} \${PYTHONLIB}
+
+EOF
