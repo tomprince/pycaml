@@ -1,0 +1,20 @@
+OASISFormat:  0.1
+OCamlVersion: >= 3.11.1
+Name:         pycaml
+Version:      0
+License:      LGPL
+Authors:      
+Synopsis:     Python bindings
+BuildTools:   ocamlbuild
+Plugins:      META (0.2),
+              StdFiles (0.2),
+              DevFiles (0.2)
+
+Library pycaml
+  Path: .
+  Modules:  Pycaml
+  CSources: pycaml_stubs.c, pycaml_stubs.h, pycaml.h
+  BuildDepends: unix
+  CCopt: -O3 -Wall -ggdb  -fPIC
+  CCopt+: -I/usr/include/python2.7
+  CClib: -lpython2.7
